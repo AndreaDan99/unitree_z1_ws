@@ -26,7 +26,10 @@ setup(
         'console_scripts': [
             'interactive_motion = z1_control.interactive_motion:main',
             'z1_state_debug = z1_control.state_debug_node:main',
-            'z1_incremental = z1_control.z1_incremental_controller:main',
+            'z1_incremental_controller = z1_control.z1_incremental_controller:main',
+            'test_home_position = z1_control.home_position:main',
+            'test_joint_sweep = z1_control.test_joint_sweep:main',
+            'test_sequence = z1_control.test_sequence:main',
         ],
     },
 )
