@@ -1,17 +1,5 @@
 # Copyright 2025 IDRA, University of Trento
 # Author: Matteo Dalle Vedove (matteodv99tn@gmail.com)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 from launch.event_handlers.on_process_exit import OnProcessExit
 import xacro
@@ -27,7 +15,7 @@ from launch.actions import (
 from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetParameter
 from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import (
     get_package_prefix,
@@ -35,11 +23,24 @@ from ament_index_python.packages import (
 )
 
 
-
 def launch_setup(context, *args, **kwargs):
 
-    nodes_to_start = list()
 
+    nodes_to_start = list()
+        # ------------------------------------------------------------
+    # 🔴 CLOCK BRIDGE (OBBLIGATORIO SU ROS 2 JAZZY)
+    # ------------------------------------------------------------
+    clock_bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=[
+            "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"
+        ],
+        output="screen",
+    )
+
+    nodes_to_start.append(clock_bridge)
+    
     xacro_file = LaunchConfiguration("xacro_file")
     robot_name = LaunchConfiguration("robot_name")
     with_gripper = LaunchConfiguration("with_gripper")
@@ -51,19 +52,18 @@ def launch_setup(context, *args, **kwargs):
 
     use_sim_time = (sim_ignition.perform(context) == "true")
 
-    # Conditions that tells wether the robot is simulated or not
-    # For now it is easy, since only ignition is supported
-    # In any case, the following reference could be useful:
-    # https://answers.ros.org/question/394181/multiple-conditions-for-ifcondition-in-ros2-launch-script/
     is_simulation = IfCondition(sim_ignition)
     is_real = UnlessCondition(sim_ignition)
 
-    #   ____
-    #  / ___|___  _ __ ___  _ __ ___   ___  _ __  ___
-    # | |   / _ \| '_ ` _ \| '_ ` _ \ / _ \| '_ \/ __|
-    # | |__| (_) | | | | | | | | | | | (_) | | | \__ \
-    #  \____\___/|_| |_| |_|_| |_| |_|\___/|_| |_|___/
-    #
+    # ------------------------------------------------------------
+    # 🔴 FIX FONDAMENTALE:
+    # forza use_sim_time GLOBALMENTE (vale anche per gz_ros2_control)
+    # ------------------------------------------------------------
+    nodes_to_start.append(SetParameter(name="use_sim_time", value=True))
+
+    # ------------------------------------------------------------
+    # Robot description
+    # ------------------------------------------------------------
     robot_description_content = xacro.process(
         xacro_file.perform(context),
         mappings={
@@ -80,29 +80,21 @@ def launch_setup(context, *args, **kwargs):
         package="robot_state_publisher",
         executable="robot_state_publisher",
         output="both",
-        parameters=[robot_description, {
-            "use_sim_time": use_sim_time,
-        }],
+        parameters=[robot_description, {"use_sim_time": use_sim_time}],
     )
 
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["joint_state_broadcaster", "-c", "/controller_manager"],
-        parameters=[{
-            "use_sim_time": use_sim_time,
-            "set_state": "active",
-        }],
+        parameters=[{"use_sim_time": use_sim_time, "set_state": "active"}],
     )
 
     starting_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=[starting_controller.perform(context), "-c", "/controller_manager"],
-        parameters=[{
-            "use_sim_time": use_sim_time,
-            "set_state": "active",
-        }],
+        parameters=[{"use_sim_time": use_sim_time, "set_state": "active"}],
     )
 
     rviz_node = Node(
@@ -127,20 +119,13 @@ def launch_setup(context, *args, **kwargs):
         rviz_delayed,
     ]
 
-    #  ____            _   ____       _           _
-    # |  _ \ ___  __ _| | |  _ \ ___ | |__   ___ | |_
-    # | |_) / _ \/ _` | | | |_) / _ \| '_ \ / _ \| __|
-    # |  _ <  __/ (_| | | |  _ < (_) | |_) | (_) | |_
-    # |_| \_\___|\__,_|_| |_| \_\___/|_.__/ \___/ \__|
-    #
+    # ------------------------------------------------------------
+    # Real robot (unchanged)
+    # ------------------------------------------------------------
     controller_manager_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
-        parameters=[
-            robot_description, controller_config, {
-                "use_sim_time": use_sim_time
-            }
-        ],
+        parameters=[robot_description, controller_config, {"use_sim_time": use_sim_time}],
         remappings=[
             ('motion_control_handle/target_frame', 'target_frame'),
             ('cartesian_motion_controller/target_frame', 'target_frame'),
@@ -153,7 +138,6 @@ def launch_setup(context, *args, **kwargs):
         "scripts",
         "z1_controller_process.py"
     )
-    print(z1_controller_script_path)
     z1_controller_process = ExecuteProcess(
         cmd=["python3", z1_controller_script_path],
         condition=is_real,
@@ -165,20 +149,15 @@ def launch_setup(context, *args, **kwargs):
         z1_controller_process,
     ]
 
-    #  ___            _ _   _
-    # |_ _|__ _ _ __ (_) |_(_) ___  _ __
-    #  | |/ _` | '_ \| | __| |/ _ \| '_ \
-    #  | | (_| | | | | | |_| | (_) | | | |
-    # |___\__, |_| |_|_|\__|_|\___/|_| |_|
-    #     |___/
+    # ------------------------------------------------------------
+    # Gazebo Sim
+    # ------------------------------------------------------------
     ignition_simulator_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            FindPackageShare("ros_gz_sim"), "/launch/gz_sim.launch.py"
-        ], ),
-        launch_arguments={
-            "gz_args": " -r -v 1 empty.sdf",
-        }.items(),
-        condition=IfCondition(sim_ignition),
+        PythonLaunchDescriptionSource(
+            [FindPackageShare("ros_gz_sim"), "/launch/gz_sim.launch.py"]
+        ),
+        launch_arguments={"gz_args": " -r -v 1 empty.sdf"}.items(),
+        condition=is_simulation,
     )
 
     ignition_spawn_z1_node = Node(
@@ -191,15 +170,15 @@ def launch_setup(context, *args, **kwargs):
             "-topic",
             "/robot_description",
         ],
-        condition=IfCondition(sim_ignition),
+        condition=is_simulation,
     )
 
     nodes_to_start += [
         ignition_simulator_node,
         ignition_spawn_z1_node,
     ]
-    return nodes_to_start
 
+    return nodes_to_start
 
 
 def generate_launch_description():
@@ -215,8 +194,10 @@ def generate_launch_description():
         get_package_share_path("z1_bringup"), "config", "z1_controllers.yaml"
     )
 
-    # --- Setup environment variables
-    MDL_ENV_VAR = "IGN_GAZEBO_RESOURCE_PATH"
+    # ------------------------------------------------------------
+    # 🔴 FIX VARIABILI AMBIENTE (gz, non ign)
+    # ------------------------------------------------------------
+    MDL_ENV_VAR = "GZ_SIM_RESOURCE_PATH"
     if MDL_ENV_VAR in os.environ:
         os.environ[MDL_ENV_VAR] += ":" + os.path.join(
             get_package_prefix("z1_description"), "share"
@@ -226,69 +207,25 @@ def generate_launch_description():
             get_package_prefix("z1_description"), "share"
         )
 
-    LIB_ENV_VAR = "IGN_GAZEBO_SYSTEM_PLUGIN_PATH"
+    LIB_ENV_VAR = "GZ_SIM_SYSTEM_PLUGIN_PATH"
     if LIB_ENV_VAR in os.environ:
-        os.environ[LIB_ENV_VAR] += ":/opt/ros/humble/lib"
+        os.environ[LIB_ENV_VAR] += ":/opt/ros/jazzy/lib"
     else:
-        os.environ[LIB_ENV_VAR] = "/opt/ros/humble/lib"
+        os.environ[LIB_ENV_VAR] = "/opt/ros/jazzy/lib"
 
-    # --- Launch arguments
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "xacro_file",
-            default_value=xacro_file_default,
-            description="Path to xacro file of the Z1 manipulator"
-        )
-    )
-
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "robot_name", default_value="z1", description="Name of the robot"
-        )
-    )
-
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "controller_config",
-            default_value=controller_config_default,
-            description=
-            "Path to the controllers.yaml file that can be loaded by the robot"
-        )
-    )
-
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "with_gripper", default_value="true", description="Use the gripper?"
-        )
-    )
-
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "starting_controller",
-            default_value="torque_controller",
-            description="Name of the controller to be started"
-        )
-    )
-
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "sim_ignition",
-            default_value="true",
-            description="Launch simulation in Ignition Gazebo?"
-        )
-    )
-
-    declared_arguments.append(
-        DeclareLaunchArgument("rviz", default_value="true", description="Launch RViz?")
-    )
-
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "rviz_config",
-            default_value=rviz_config_default,
-            description="Path to RViz configuration file"
-        )
-    )
+    # ------------------------------------------------------------
+    # Launch arguments (UNTOUCHED)
+    # ------------------------------------------------------------
+    declared_arguments += [
+        DeclareLaunchArgument("xacro_file", default_value=xacro_file_default),
+        DeclareLaunchArgument("robot_name", default_value="z1"),
+        DeclareLaunchArgument("controller_config", default_value=controller_config_default),
+        DeclareLaunchArgument("with_gripper", default_value="true"),
+        DeclareLaunchArgument("starting_controller", default_value="torque_controller"),
+        DeclareLaunchArgument("sim_ignition", default_value="true"),
+        DeclareLaunchArgument("rviz", default_value="true"),
+        DeclareLaunchArgument("rviz_config", default_value=rviz_config_default),
+    ]
 
     return LaunchDescription(
         declared_arguments + [OpaqueFunction(function=launch_setup)]

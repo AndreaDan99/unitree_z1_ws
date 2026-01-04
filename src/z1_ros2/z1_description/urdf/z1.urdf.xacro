@@ -330,15 +330,22 @@
     <xacro:if value="$(arg sim_ignition)">
         <gazebo reference="world" />
         <gazebo>
-            <plugin filename="libign_ros2_control-system.so"
-                name="ign_ros2_control::IgnitionROS2ControlPlugin">
-                <parameters> $(arg controllers) </parameters>
-                <robot_param> robot_description </robot_param>
-                <robot_param_node> robot_state_publisher </robot_param_node>
-                <controller_manager_name> controller_manager </controller_manager_name>
+            <plugin filename="gz_ros2_control-system"
+                    name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+
+                <!-- IMPORTANTISSIMO: usa il clock di Gazebo -->
+                <ros>
+                    <use_sim_time>true</use_sim_time>
+                </ros>
+
+                <parameters>$(arg controllers)</parameters>
+                <robot_param>robot_description</robot_param>
+                <robot_param_node>robot_state_publisher</robot_param_node>
+                <controller_manager_name>controller_manager</controller_manager_name>
             </plugin>
         </gazebo>
     </xacro:if>
+
 
     <xacro:z1_ros2_control
         name="$(arg name)"
