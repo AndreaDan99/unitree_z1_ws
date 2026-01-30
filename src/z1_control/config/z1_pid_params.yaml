@@ -1,0 +1,23 @@
+z1_pd_gravity_node:
+  ros__parameters:
+    # Guadagni proporzionali (Kp)
+    #Kp: [40.0, 40.0, 35.0, 20.0, 8.0, 5.0]
+    # Guadagni derivativi (Kd)
+    #Kd: [2.5, 4.5, 3.0, 1.5, 0.5, 0.3]
+    # Guadagni integrali (Ki)
+    #Ki: [0.0, 1.0, 0.8, 0.3, 0.15, 0.08]
+    # Guadagni RIDOTTI per primo test
+    Kp: [20.0, 20.0, 18.0, 12.0, 5.0, 3.0] 
+    Kd: [1.5, 2.5, 2.0, 1.0, 0.3, 0.2]     
+    Ki: [0.0, 0.5, 0.4, 0.15, 0.08, 0.04]  
+    # Limiti effort (Nm)
+    torque_max: 10
+    
+    # Dead-zone integrale (rad)
+    integral_deadzone: 0.05
+    
+    # Limiti anti-windup integrale (rad)
+    integral_limit: 0.1
+    
+    # Frequenza controllo (Hz)
+    control_frequency: 100.0

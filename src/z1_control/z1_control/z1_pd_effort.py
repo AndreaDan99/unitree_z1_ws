@@ -34,6 +34,12 @@ class Z1PDEffortNode(Node):
             '/torque_controller/commands',
             10
         )
+        self.target_sub = self.create_subscription(
+            Float64MultiArray,
+            '/z1/joint_targets',
+            self.target_callback,
+            10
+        )
 
         self.control_dt = 0.001  # 1000 Hz come controller_manager
         self.control_timer = self.create_timer(self.control_dt, self.control_loop)
@@ -66,6 +72,15 @@ class Z1PDEffortNode(Node):
         msg = Float64MultiArray()
         msg.data = tau.tolist()
         self.torque_pub.publish(msg)
+
+    def target_callback(self, msg: Float64MultiArray):
+        if len(msg.data) == self.n_joints:
+            self.q_d = np.array(msg.data)
+            self.get_logger().info(f'New target: {self.q_d}')
+        else:
+            self.get_logger().warn(f'Invalid target size: {len(msg.data)}')
+
+
 
 def main(args=None):
     rclpy.init(args=args)

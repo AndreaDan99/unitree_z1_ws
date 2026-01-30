@@ -101,8 +101,7 @@ def launch_setup(context, *args, **kwargs):
         package="controller_manager",
         executable="spawner",
         arguments=["torque_controller", "-c", "/controller_manager"],
-        parameters=[{"use_sim_time": use_sim_time}],
-        delay=1.0  # aspetta 1 secondo
+        parameters=[{"use_sim_time": use_sim_time, "set_state": "active"}],
     )
 
     rviz_node = Node(

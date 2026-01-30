@@ -68,10 +68,10 @@ def main(args=None):
     node = TrajectoryCaller()
 
     future = node.send_traj_request([
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        np.array([0.0, 0.0, -0.1, 0.0, 0.0, 0.0]),
         np.array([0.0, 1.0, -1.0, 0.0, 0.0, 0.0]),
         np.array([np.pi / 4, 1.0, -1.0, 0.0, 0.0, 0.0]),
-        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        np.array([0.0, 0.0, -0.1, 0.0, 0.0, 0.0]),
     ])
     rclpy.spin_until_future_complete(node, future)
 

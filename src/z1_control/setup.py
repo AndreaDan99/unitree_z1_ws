@@ -1,3 +1,5 @@
+from glob import glob
+import os
 from setuptools import find_packages, setup
 
 package_name = 'z1_control'
@@ -5,12 +7,15 @@ package_name = 'z1_control'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=[package_name],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')), 
     ],
+
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='andrea',
@@ -30,6 +35,9 @@ setup(
             'test_home_position = z1_control.home_position:main',
             'test_joint_sweep = z1_control.test_joint_sweep:main',
             'test_sequence = z1_control.test_sequence:main',
+            'z1_pd_effort = z1_control.z1_pd_effort:main',
+            'z1_pd_gravity = z1_control.z1_pd_gravity_node:main',
+            'tuning_logger = z1_control.tuning_logger:main',
         ],
     },
 )
