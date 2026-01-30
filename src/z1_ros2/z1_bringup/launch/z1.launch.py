@@ -97,6 +97,14 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{"use_sim_time": use_sim_time, "set_state": "active"}],
     )
 
+    torque_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["torque_controller", "-c", "/controller_manager"],
+        parameters=[{"use_sim_time": use_sim_time}],
+        delay=1.0  # aspetta 1 secondo
+    )
+
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
@@ -116,6 +124,7 @@ def launch_setup(context, *args, **kwargs):
         robot_state_publisher_node,
         joint_state_broadcaster_spawner,
         starting_controller_spawner,
+        torque_controller_spawner,
         rviz_delayed,
     ]
 
