@@ -38,6 +38,10 @@ setup(
             'z1_pd_effort = z1_control.z1_pd_effort:main',
             'z1_pd_gravity = z1_control.z1_pd_gravity_node:main',
             'tuning_logger = z1_control.tuning_logger:main',
+            'impedance_controller = z1_control.impedance_controller:main',
+            'impedance_test = z1_control.impedance_test:main',
+            'impedance_controller_v2 = z1_control.impedance_controller_v2:main',
+
         ],
     },
 )

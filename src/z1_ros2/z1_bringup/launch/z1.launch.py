@@ -59,7 +59,7 @@ def launch_setup(context, *args, **kwargs):
     # 🔴 FIX FONDAMENTALE:
     # forza use_sim_time GLOBALMENTE (vale anche per gz_ros2_control)
     # ------------------------------------------------------------
-    nodes_to_start.append(SetParameter(name="use_sim_time", value=True))
+    nodes_to_start.append(SetParameter(name="use_sim_time", value=use_sim_time))
 
     # ------------------------------------------------------------
     # Robot description
@@ -100,10 +100,13 @@ def launch_setup(context, *args, **kwargs):
     torque_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["torque_controller", "-c", "/controller_manager"],
-        parameters=[{"use_sim_time": use_sim_time, "set_state": "active"}],
+        arguments=["torque_controller", "-c", "/controller_manager", "--inactive"],
+        parameters=[{"use_sim_time": use_sim_time}],
+        condition=is_real,  # Solo per robot reale
     )
 
+    nodes_to_start.append(torque_controller_spawner)
+    
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
@@ -123,7 +126,6 @@ def launch_setup(context, *args, **kwargs):
         robot_state_publisher_node,
         joint_state_broadcaster_spawner,
         starting_controller_spawner,
-        torque_controller_spawner,
         rviz_delayed,
     ]
 

@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 200 # Hz
+    update_rate: 500 # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -52,6 +52,7 @@ joint_trajectory_controller:
       - position
       - velocity
 
+    state_publish_rate: 50.0
     action_monitor_rate: 20.0
 
     allow_partial_joints_goal: false
