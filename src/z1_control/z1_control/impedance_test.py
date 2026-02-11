@@ -2,6 +2,7 @@
 """
 Test avanzato per Impedance Controller
 Esegue movimenti complessi VISIBILI in spazio limitato
+CON ATTESA CONVERGENZA per ogni waypoint
 """
 
 import rclpy
@@ -9,6 +10,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 import time
 import numpy as np
+
 
 class ImpedanceComplexTest(Node):
     def __init__(self):
@@ -28,13 +30,15 @@ class ImpedanceComplexTest(Node):
         self.pose_updated = False
         self.initial_position = None
         
-        # Configurazione - RIDOTTO per movimenti più lenti e visibili
-        self.control_rate = 10.0  # Hz - ridotto da 20 a 10 (più lento)
-        self.dt = 1.0 / self.control_rate
+        # Configurazione - OTTIMIZZATO per convergenza
+        self.convergence_tolerance_mm = 8.0  # Tolleranza convergenza (mm)
+        self.max_wait_per_waypoint = 5.0     # Max tempo attesa per waypoint (s)
         
         self.get_logger().info('='*70)
-        self.get_logger().info('IMPEDANCE CONTROL - ADVANCED TEST (VISIBLE MOVEMENTS)')
+        self.get_logger().info('IMPEDANCE CONTROL - ADVANCED TEST (WITH CONVERGENCE)')
         self.get_logger().info('='*70)
+        self.get_logger().info(f'Tolleranza convergenza: {self.convergence_tolerance_mm}mm')
+        self.get_logger().info(f'Max attesa per waypoint: {self.max_wait_per_waypoint}s')
         self.get_logger().info('Attendo posizione corrente...')
     
     def pose_callback(self, msg):
@@ -74,95 +78,123 @@ class ImpedanceComplexTest(Node):
         self.pub.publish(target)
         return True
     
-    def execute_trajectory(self, name, waypoints, duration_per_segment, show_progress=True):
+    def wait_for_convergence(self, target_pos, tolerance_mm=None, timeout=None):
+        """
+        Aspetta che il robot raggiunga il target entro tolleranza
+        Returns: (converged, final_error_mm, time_elapsed)
+        """
+        if tolerance_mm is None:
+            tolerance_mm = self.convergence_tolerance_mm
+        if timeout is None:
+            timeout = self.max_wait_per_waypoint
+        
+        start_time = time.time()
+        min_error = float('inf')
+        samples_below_tolerance = 0
+        required_samples = 3  # Deve rimanere sotto tolleranza per 3 campioni (0.15s)
+        
+        while (time.time() - start_time) < timeout:
+            if self.current_pose is None:
+                rclpy.spin_once(self, timeout_sec=0.05)
+                continue
+            
+            curr = np.array([
+                self.current_pose.pose.position.x,
+                self.current_pose.pose.position.y,
+                self.current_pose.pose.position.z
+            ])
+            
+            error_mm = np.linalg.norm(curr - target_pos) * 1000
+            min_error = min(min_error, error_mm)
+            
+            # Conta campioni consecutivi sotto tolleranza
+            if error_mm < tolerance_mm:
+                samples_below_tolerance += 1
+                if samples_below_tolerance >= required_samples:
+                    elapsed = time.time() - start_time
+                    return True, error_mm, elapsed
+            else:
+                samples_below_tolerance = 0  # Reset se esce dalla tolleranza
+            
+            rclpy.spin_once(self, timeout_sec=0.01)
+            time.sleep(0.05)  # 20Hz check rate
+        
+        # Timeout raggiunto
+        elapsed = time.time() - start_time
+        return False, min_error, elapsed
+    
+    def execute_trajectory(self, name, waypoints, show_progress=True):
         """
         Esegue traiettoria definita da waypoints
         waypoints: lista di np.array([x, y, z]) relativi a initial_position
-        duration_per_segment: secondi per ogni segmento
         show_progress: mostra posizione corrente durante movimento
         """
         self.get_logger().info('')
         self.get_logger().info(f'🔷 {name}')
         self.get_logger().info('-'*70)
         self.get_logger().info(f'   Waypoints: {len(waypoints)}')
-        self.get_logger().info(f'   Durata totale: {len(waypoints)*duration_per_segment:.1f}s')
-        self.get_logger().info(f'   Velocità: {self.control_rate} Hz')
         
         start_time = time.time()
+        total_error = 0.0
+        max_error = 0.0
+        converged_count = 0
+        timeout_count = 0
         
         for i, waypoint in enumerate(waypoints):
             # Calcola posizione assoluta
             target_pos = self.initial_position + waypoint
             
-            # Interpolazione lineare per movimento fluido
-            steps = int(duration_per_segment * self.control_rate)
-            
-            if i == 0:
-                # Primo waypoint: parti da posizione corrente
-                start_pos = np.array([
-                    self.current_pose.pose.position.x,
-                    self.current_pose.pose.position.y,
-                    self.current_pose.pose.position.z
-                ])
-            else:
-                # Waypoint successivo: parti dal precedente
-                start_pos = self.initial_position + waypoints[i-1]
-            
             # Log waypoint
             if show_progress:
                 self.get_logger().info(
                     f'   → Waypoint {i+1}/{len(waypoints)}: '
-                    f'[{waypoint[0]*1000:+.1f}, {waypoint[1]*1000:+.1f}, {waypoint[2]*1000:+.1f}] mm'
+                    f'[{waypoint[0]*1000:+6.1f}, {waypoint[1]*1000:+6.1f}, {waypoint[2]*1000:+6.1f}] mm'
                 )
             
-            # Interpola tra start_pos e target_pos
-            for step in range(steps):
-                alpha = (step + 1) / steps  # 0 a 1
-                interpolated = start_pos + alpha * (target_pos - start_pos)
-                
-                self.send_absolute_target(interpolated)
-                
-                # Spin per ricevere feedback
-                rclpy.spin_once(self, timeout_sec=0.001)
-                
-                # Feedback posizione corrente ogni 10 step
-                if show_progress and step % 10 == 0 and self.current_pose:
-                    curr = np.array([
-                        self.current_pose.pose.position.x,
-                        self.current_pose.pose.position.y,
-                        self.current_pose.pose.position.z
-                    ])
-                    error = np.linalg.norm(curr - interpolated)
-                    # Log compatto sulla stessa riga
-                    print(f'\r      Step {step}/{steps}, Errore: {error*1000:.1f}mm', end='', flush=True)
-                
-                # Rate control
-                time.sleep(self.dt)
+            # Invia target
+            self.send_absolute_target(target_pos)
             
-            if show_progress:
-                print()  # Newline dopo progress bar
-        
-        elapsed = time.time() - start_time
-        
-        # Verifica posizione finale
-        if self.wait_for_pose(timeout=1.0):
-            final_pos = np.array([
-                self.current_pose.pose.position.x,
-                self.current_pose.pose.position.y,
-                self.current_pose.pose.position.z
-            ])
-            displacement = final_pos - self.initial_position
-            error = np.linalg.norm(displacement - waypoints[-1])
+            # Attendi convergenza
+            converged, final_error, elapsed = self.wait_for_convergence(target_pos)
             
-            self.get_logger().info(
-                f'   ✅ Completato in {elapsed:.1f}s (errore finale: {error*1000:.1f}mm)'
-            )
-            self.get_logger().info(
-                f'      Posizione finale: [{final_pos[0]:.4f}, {final_pos[1]:.4f}, {final_pos[2]:.4f}]'
-            )
+            total_error += final_error
+            max_error = max(max_error, final_error)
+            
+            if converged:
+                converged_count += 1
+                if show_progress:
+                    self.get_logger().info(
+                        f'      ✅ Raggiunto in {elapsed:.2f}s (errore: {final_error:.1f}mm)'
+                    )
+            else:
+                timeout_count += 1
+                if show_progress:
+                    self.get_logger().warn(
+                        f'      ⚠️ Timeout {elapsed:.2f}s (errore minimo: {final_error:.1f}mm)'
+                    )
+        
+        total_elapsed = time.time() - start_time
+        avg_error = total_error / len(waypoints) if waypoints else 0
+        
+        # Summary
+        self.get_logger().info('')
+        self.get_logger().info(f'   📊 RISULTATI:')
+        self.get_logger().info(f'      Tempo totale: {total_elapsed:.1f}s')
+        self.get_logger().info(f'      Converged: {converged_count}/{len(waypoints)}')
+        self.get_logger().info(f'      Timeout: {timeout_count}/{len(waypoints)}')
+        self.get_logger().info(f'      Errore medio: {avg_error:.1f}mm')
+        self.get_logger().info(f'      Errore max: {max_error:.1f}mm')
+        
+        return {
+            'converged': converged_count,
+            'timeout': timeout_count,
+            'avg_error': avg_error,
+            'max_error': max_error,
+            'total_time': total_elapsed
+        }
     
     def generate_circle_xy(self, radius=0.03, num_points=16):
-        """Cerchio sul piano XY - RADDOPPIATO (raggio 3cm)"""
+        """Cerchio sul piano XY"""
         angles = np.linspace(0, 2*np.pi, num_points)
         waypoints = []
         for angle in angles:
@@ -172,7 +204,7 @@ class ImpedanceComplexTest(Node):
         return waypoints
     
     def generate_circle_xz(self, radius=0.03, num_points=16):
-        """Cerchio sul piano XZ - RADDOPPIATO (raggio 3cm)"""
+        """Cerchio sul piano XZ"""
         angles = np.linspace(0, 2*np.pi, num_points)
         waypoints = []
         for angle in angles:
@@ -182,7 +214,7 @@ class ImpedanceComplexTest(Node):
         return waypoints
     
     def generate_spiral_3d(self, radius=0.04, height=0.05, num_turns=1.5, num_points=24):
-        """Spirale 3D - AUMENTATO (raggio 4cm, altezza 5cm)"""
+        """Spirale 3D"""
         t = np.linspace(0, num_turns * 2 * np.pi, num_points)
         waypoints = []
         for i, angle in enumerate(t):
@@ -199,9 +231,7 @@ class ImpedanceComplexTest(Node):
         return waypoints
     
     def generate_star_pattern(self, radius=0.04, num_rays=6):
-        """
-        Pattern a stella - AUMENTATO (raggio 4cm, 6 raggi)
-        """
+        """Pattern a stella"""
         angles = np.linspace(0, 2*np.pi, num_rays, endpoint=False)
         waypoints = []
         
@@ -217,7 +247,7 @@ class ImpedanceComplexTest(Node):
         return waypoints
     
     def generate_figure_eight(self, size=0.035, num_points=32):
-        """Figura a otto (lemniscata) - AUMENTATO (3.5cm)"""
+        """Figura a otto (lemniscata)"""
         t = np.linspace(0, 2*np.pi, num_points)
         waypoints = []
         for angle in t:
@@ -229,7 +259,7 @@ class ImpedanceComplexTest(Node):
         return waypoints
     
     def generate_square(self, side=0.05, num_points_per_side=8):
-        """Quadrato sul piano XY (lato 5cm)"""
+        """Quadrato sul piano XY"""
         waypoints = []
         
         # 4 angoli del quadrato
@@ -270,44 +300,70 @@ class ImpedanceComplexTest(Node):
         )
         self.get_logger().info('='*70)
         
+        # Raccolta risultati
+        all_results = []
+        
         # Test 1: Quadrato XY
         waypoints = self.generate_square(side=0.05, num_points_per_side=8)
-        self.execute_trajectory('Test 1: Quadrato piano XY (lato 5cm)', waypoints, 0.6)
-        
-        time.sleep(2.0)  # Pausa più lunga
+        result = self.execute_trajectory('Test 1: Quadrato piano XY (lato 5cm)', waypoints)
+        all_results.append(('Quadrato XY', result))
+        time.sleep(1.5)
         
         # Test 2: Cerchio XY
         waypoints = self.generate_circle_xy(radius=0.03, num_points=16)
-        self.execute_trajectory('Test 2: Cerchio piano XY (r=3cm)', waypoints, 0.6)
-        
-        time.sleep(2.0)
+        result = self.execute_trajectory('Test 2: Cerchio piano XY (r=3cm)', waypoints)
+        all_results.append(('Cerchio XY', result))
+        time.sleep(1.5)
         
         # Test 3: Cerchio XZ (verticale)
         waypoints = self.generate_circle_xz(radius=0.03, num_points=16)
-        self.execute_trajectory('Test 3: Cerchio piano XZ verticale (r=3cm)', waypoints, 0.6)
-        
-        time.sleep(2.0)
+        result = self.execute_trajectory('Test 3: Cerchio piano XZ verticale (r=3cm)', waypoints)
+        all_results.append(('Cerchio XZ', result))
+        time.sleep(1.5)
         
         # Test 4: Figura a 8
         waypoints = self.generate_figure_eight(size=0.035, num_points=32)
-        self.execute_trajectory('Test 4: Figura a otto (3.5cm)', waypoints, 0.4)
-        
-        time.sleep(2.0)
+        result = self.execute_trajectory('Test 4: Figura a otto (3.5cm)', waypoints)
+        all_results.append(('Figura 8', result))
+        time.sleep(1.5)
         
         # Test 5: Spirale 3D
         waypoints = self.generate_spiral_3d(radius=0.04, height=0.05, num_turns=1.5, num_points=24)
-        self.execute_trajectory('Test 5: Spirale 3D (r=4cm, h=5cm)', waypoints, 0.5)
-        
-        time.sleep(2.0)
+        result = self.execute_trajectory('Test 5: Spirale 3D (r=4cm, h=5cm)', waypoints)
+        all_results.append(('Spirale 3D', result))
+        time.sleep(1.5)
         
         # Test 6: Stella
         waypoints = self.generate_star_pattern(radius=0.04, num_rays=6)
-        self.execute_trajectory('Test 6: Pattern stella (r=4cm, 6 raggi)', waypoints, 0.8)
+        result = self.execute_trajectory('Test 6: Pattern stella (r=4cm, 6 raggi)', waypoints)
+        all_results.append(('Stella', result))
         
-        # Test completato
+        # Test completato - SUMMARY FINALE
         self.get_logger().info('')
         self.get_logger().info('='*70)
-        self.get_logger().info('✅ TUTTI I TEST COMPLETATI')
+        self.get_logger().info('✅ TUTTI I TEST COMPLETATI - SUMMARY')
+        self.get_logger().info('='*70)
+        
+        total_converged = 0
+        total_timeout = 0
+        total_waypoints = 0
+        
+        for name, res in all_results:
+            total_converged += res['converged']
+            total_timeout += res['timeout']
+            total_waypoints += res['converged'] + res['timeout']
+            
+            self.get_logger().info(
+                f'{name:15s} | Conv: {res["converged"]:2d}/{res["converged"]+res["timeout"]:2d} | '
+                f'Avg: {res["avg_error"]:5.1f}mm | Max: {res["max_error"]:5.1f}mm | '
+                f'Time: {res["total_time"]:5.1f}s'
+            )
+        
+        self.get_logger().info('-'*70)
+        self.get_logger().info(
+            f'TOTALE: Converged {total_converged}/{total_waypoints} '
+            f'({100*total_converged/total_waypoints:.1f}%)'
+        )
         
         # Posizione finale vs iniziale
         if self.wait_for_pose():
@@ -319,12 +375,11 @@ class ImpedanceComplexTest(Node):
             total_drift = final_pos - self.initial_position
             drift_magnitude = np.linalg.norm(total_drift)
             
+            self.get_logger().info('')
+            self.get_logger().info(f'   Drift totale: {drift_magnitude*1000:.1f}mm')
             self.get_logger().info(
-                f'   Drift totale: {drift_magnitude*1000:.1f}mm'
-            )
-            self.get_logger().info(
-                f'   Δ finale: [{total_drift[0]:+.4f}, {total_drift[1]:+.4f}, '
-                f'{total_drift[2]:+.4f}]'
+                f'   Δ finale: [{total_drift[0]*1000:+.1f}, {total_drift[1]*1000:+.1f}, '
+                f'{total_drift[2]*1000:+.1f}] mm'
             )
         
         self.get_logger().info('='*70)

@@ -24,16 +24,26 @@ impedance_controller_v2:
     control_rate: 500.0
     log_rate: 2.0
     
-    K_p_translation: [250.0, 250.0, 350.0]
-    K_d_translation: [35.0, 35.0, 45.0]
-    K_i_translation: [0.3, 0.3, 1.0]
-
-    # Rotational gains [roll, pitch, yaw]
-    K_p_rotation: [40.0, 40.0, 60.0]      
-    K_d_rotation: [3.0, 3.0, 5.0]
-    K_i_rotation: [0.0, 0.0, 0.0] 
-
-    integral_limit: 0.05
-    torque_limit: 70.0
+    # Controllo posizione (cartesiano)
+    K_p_translation: [400.0, 400.0, 800.0]
+    K_d_translation: [15.0, 15.0, 30.0]
+    K_i_translation: [0.2, 0.2, 0.6]
+    
+    # Rotazioni cartesiane (non usate, mantenute per compatibilità)
+    K_p_rotation: [0.0, 0.0, 0.0]
+    K_d_rotation: [0.0, 0.0, 0.0]
+    K_i_rotation: [0.0, 0.0, 0.0]
+    
+    # Controllo orientamento (joint-space su polso)
+    control_wrist_orientation: true
+    K_p_wrist_joints: [40.0, 40.0, 40.0]
+    K_d_wrist_joints: [4.0, 4.0, 4.0]
+    
+    # Parametri generali
+    integral_limit: 0.02
+    torque_limit: 80.0
     safe_startup_duration: 3.0
     max_step_distance: 0.40
+    
+    # Compensazione dinamica
+    gravity_scale_factor_j2: 1.3

@@ -7,11 +7,11 @@ z1_pd_gravity_node:
     # Guadagni integrali (Ki)
     #Ki: [0.0, 1.0, 0.8, 0.3, 0.15, 0.08]
     # Guadagni RIDOTTI per primo test
-    Kp: [20.0, 20.0, 18.0, 12.0, 5.0, 3.0] 
-    Kd: [1.5, 2.5, 2.0, 1.0, 0.3, 0.2]     
-    Ki: [0.0, 0.5, 0.4, 0.15, 0.08, 0.04]  
+    Kp: [40.0, 40.0, 35.0, 20.0, 8.0, 5.0] 
+    Kd: [2.5, 4.5, 3.0, 1.5, 0.3, 0.2]     
+    Ki: [0.0, 0.0, 0.0, 0.0, 0.00, 0.00]  
     # Limiti effort (Nm)
-    torque_max: 10
+    torque_max: 50.0
     
     # Dead-zone integrale (rad)
     integral_deadzone: 0.05

@@ -434,6 +434,7 @@ class ImpedanceController(Node):
             f'Err_pos: {self.error_norm_pos*1000:6.2f}mm (avg: {avg_pos*1000:6.2f}mm) | '
             f'Err_rot: {np.rad2deg(self.error_norm_rot):5.2f}° | '
             f'Vel: {self.vel_norm:5.3f} | F: {self.force_norm:6.1f}N | τ: {self.max_torque:5.2f}Nm'
+            
         )
 
 
